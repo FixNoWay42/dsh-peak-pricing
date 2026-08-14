@@ -2,6 +2,20 @@
 
 [English](README.md) | 中文
 
+在配置的高峰计价时段内，将 agent 的模型请求路由到预设的廉价模型。
+
+## 文档
+
+- [安装文档](docs/installation.zh.md) — 环境要求与三种安装方式（monorepo / npm / 源码）
+- [配置参考](docs/configuration.zh.md) — 全部配置字段、默认值、校验规则与示例
+- [使用方法](docs/usage.zh.md) — 在 deepseek-harness 中挂载、行为确认、程序化调用
+- [架构原理](docs/architecture.zh.md) — `agent/request` waterfall、prepend 顺序与时间语义
+- [开发指南](docs/development.zh.md) — 命令、测试、构建与发布
+- [常见问题](docs/faq.zh.md) — FAQ 与故障排查
+- [示例配置](examples/cordis.yml) — 可直接挂载的 `cordis.yml`
+
+## 概述
+
 函数插件：在配置的高峰计价时段内，将 agent 的模型请求路由到预设的廉价模型，避免价格高峰命中昂贵的会话选型。切换是对已解析请求配置的逐请求实时变换，发生在 `agent/request` waterfall：高峰时段内，预设的 provider/model 组合替换会话解析出的结果；时段外，已解析配置原样返回。
 
 时段是配置时区下每日的本地挂钟时间区间，起点包含、终点不包含。默认为北京时间（`Asia/Shanghai`，UTC+8，无夏令时），时段为 09:00-12:00 与 14:00-18:00。可选的 `effectiveFrom`（RFC 3339 即时点）控制开关生效时间：在此之前所有请求都不切换；此后（或不设置时立即）按时段生效。

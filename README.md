@@ -2,6 +2,20 @@
 
 English | [中文](README.zh.md)
 
+Route agent model requests to a preset cheap model during configured peak-price windows.
+
+## Documentation
+
+- [Installation](docs/installation.md) — requirements and install options (monorepo, npm, from source)
+- [Configuration](docs/configuration.md) — every config field, defaults, validation, and examples
+- [Usage](docs/usage.md) — mounting in deepseek-harness, behavior confirmation, programmatic use
+- [Architecture](docs/architecture.md) — the `agent/request` waterfall, prepend ordering, and time semantics
+- [Development](docs/development.md) — commands, tests, build, and publish
+- [FAQ](docs/faq.md) — common questions and troubleshooting
+- [Examples](examples/cordis.yml) — ready-to-mount `cordis.yml` files
+
+## Overview
+
 Function plugin that routes agent model requests to a preset cheap model during configured peak-price windows, so price spikes never hit a costly session selection. The switch is a per-request live transformation of the resolved request config at the `agent/request` waterfall: during a peak window the preset provider/model pair replaces whatever the session resolved; outside the windows the resolved config is returned unchanged.
 
 Windows are daily local wall-clock ranges in a configurable IANA timezone, each start inclusive and end exclusive. The default is Beijing time (`Asia/Shanghai`, UTC+8, no daylight saving) with 09:00-12:00 and 14:00-18:00. An optional `effectiveFrom` RFC 3339 instant gates the switch: before it, every request is untouched; after it (or when omitted, immediately), the windows apply.
