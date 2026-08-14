@@ -13,6 +13,7 @@ Route agent model requests to a preset cheap model during configured peak-price 
 - [Development](docs/development.md) — commands, tests, build, and publish
 - [FAQ](docs/faq.md) — common questions and troubleshooting
 - [Examples](examples/cordis.yml) — ready-to-mount `cordis.yml` files
+- [`start.sh`](start.sh) — interactive one-shot setup, install, and enable
 
 ## Overview
 

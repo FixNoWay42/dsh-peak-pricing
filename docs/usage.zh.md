@@ -4,6 +4,21 @@
 
 `@deepseek-ai/dsh-peak-pricing` 是一个 Cordis 函数插件（function plugin）：在配置的高峰计价时段（peak-price windows）内，把 agent 的模型请求路由到预设的廉价模型，避免价格高峰命中昂贵的会话选型。本页说明如何在 deepseek-harness 部署中配置它、如何确认它生效、如何程序化使用，以及如何排查问题。模型体验细节与已知限制见 README；以下内容以 `src/index.ts` 与测试为准。
 
+## 用 `start.sh` 一键设置
+
+仓库根目录的 `start.sh` 脚本以交互方式（或通过参数 / `START_*` 环境变量）收集配置，渲染出经过校验的 `cordis.yml` 条目，用插件自身的 schema 验证配置，可选地安装并构建包，还可把条目追加到 deepseek-harness 部署的 `cordis.yml`。不带参数运行即进入交互向导，带参数则为非交互运行：
+
+```sh
+./start.sh --timezone Asia/Shanghai \
+           --windows 09:00-12:00,14:00-18:00 \
+           --effective-from 2026-08-17T00:00:00+08:00 \
+           --provider deepseek --model deepseek-v4-flash \
+           --tariff 'my-model:0.5,4,12,0.25,2,6' \
+           --out cordis.yml
+```
+
+`--windows` 是逗号分隔的 `HH:mm-HH:mm` 区间。`--tariff` 按模型覆盖内置 DeepSeek 价目表，六个价格依次为 `peakHit,peakIn,peakOut,offHit,offIn,offOut`（每百万 tokens 的缓存命中输入、缓存未命中输入、输出，先高峰后空闲，单位元）。`--harness <dir>` 把条目追加到 `<dir>/cordis.yml`；`--install` 在写入后运行 `pnpm install` 与 `pnpm run build`；`--out` 指定输出文件（默认 `cordis.yml`）；`--force` 覆盖已存在的 `--out`；`--quiet` 只打印汇总。运行 `./start.sh --help` 查看完整参数。当 `lib/` 已构建时，脚本在写入前用插件自身的 schema 校验配置，因此错误的时区、非法的时段或无效的价目价格会在产出文件之前就失败。
+
 ## 典型场景：DeepSeek API 峰谷计价
 
 DeepSeek API 的价格随一天中的时段变化，高峰时段的每 token 费率高于非高峰时段。以示例假设高峰时段为北京时间 09:00-12:00 与 14:00-18:00（这两个时段也正是插件默认值）。高峰时段内，插件把解析出的 provider/model 组合替换为预设的廉价模型（如 `deepseek-chat`），于是高峰窗口内的每个 agent 模型请求都按廉价费率计费；时段外继续原样使用会话选中（或默认）的模型。切换是对已解析请求配置的逐请求实时变换，发生在 `agent/request` waterfall：高峰时段内，预设的 provider/model 组合替换会话解析出的结果；时段外，已解析配置原样返回。

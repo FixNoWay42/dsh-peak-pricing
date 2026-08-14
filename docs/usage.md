@@ -4,6 +4,21 @@
 
 `@deepseek-ai/dsh-peak-pricing` is a Cordis function plugin that routes agent model requests to a preset cheap model during configured peak-price windows, so price spikes never hit a costly session selection. This page shows how to configure it in a deepseek-harness deployment, what to observe to confirm it works, how to drive it programmatically, and how to troubleshoot. See the README for the model-experience details and the known limitations; everything below reflects the implementation in `src/index.ts` and the tests.
 
+## One-shot setup with `start.sh`
+
+The `start.sh` script in the repository root collects the configuration interactively (or from flags / `START_*` environment variables), renders a validated `cordis.yml` entry, verifies it against the plugin's own schema, optionally installs and builds the package, and can append the entry to a deepseek-harness deployment's `cordis.yml`. Run it with no arguments for the interactive wizard, or pass flags for a non-interactive run:
+
+```sh
+./start.sh --timezone Asia/Shanghai \
+           --windows 09:00-12:00,14:00-18:00 \
+           --effective-from 2026-08-17T00:00:00+08:00 \
+           --provider deepseek --model deepseek-v4-flash \
+           --tariff 'my-model:0.5,4,12,0.25,2,6' \
+           --out cordis.yml
+```
+
+The `--windows` list is comma-separated `HH:mm-HH:mm` ranges. The `--tariff` value overrides the built-in DeepSeek tariff per model with six prices in the order `peakHit,peakIn,peakOut,offHit,offIn,offOut` (CNY per million tokens for cache-hit input, cache-miss input, and output, peak then off-peak). `--harness <dir>` appends the entry to `<dir>/cordis.yml`; `--install` runs `pnpm install` and `pnpm run build` after writing; `--out` chooses the output file (default `cordis.yml`); `--force` overwrites an existing `--out` without asking; `--quiet` prints only the summary. Run `./start.sh --help` for the full flag list. When `lib/` is built, the script validates the configuration against the plugin's own schema before writing, so a bad timezone, malformed window, or invalid tariff price fails before the file is emitted.
+
 ## Typical scenario: DeepSeek API peak pricing
 
 DeepSeek API pricing varies by time of day, with peak windows billed at a higher per-token rate than off-peak hours. As an example, assume the peak windows are 09:00-12:00 and 14:00-18:00 Beijing time (these are also the plugin defaults). During those windows the plugin replaces the resolved provider/model pair with a preset cheap model such as `deepseek-chat`, so every agent model request in the peak window bills at the cheap rate; outside the windows the session-selected (or default) model is used unchanged. The switch is a per-request live transformation of the resolved request config at the `agent/request` waterfall: during a peak window the preset provider/model pair replaces whatever the session resolved, and outside the windows the resolved config is returned unchanged.

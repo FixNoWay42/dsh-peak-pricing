@@ -13,6 +13,7 @@
 - [开发指南](docs/development.zh.md) — 命令、测试、构建与发布
 - [常见问题](docs/faq.zh.md) — FAQ 与故障排查
 - [示例配置](examples/cordis.yml) — 可直接挂载的 `cordis.yml`
+- [`start.sh`](start.sh) — 交互式一键设置、安装与启用
 
 ## 概述
 

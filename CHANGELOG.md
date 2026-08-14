@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/). Pre-release versions (`0.1.0-rc.*`) track the npm published line of `@deepseek-ai/dsh-peak-pricing`.
 
+## [0.1.0-rc.8] - 2026-08-14
+
+### Added
+
+- `start.sh` one-shot setup script: collects timezone, peak windows, effective date, peak preset, and optional tariff overrides interactively (or from flags / `START_*` environment variables), renders a validated `cordis.yml` entry, verifies the config against the plugin's own schema before writing, optionally installs/builds the package, and can append the entry to a deepseek-harness deployment's `cordis.yml`.
+- `start.sh` shipped in the npm package `files` allowlist.
+
+### Changed
+
+- README (English / 简体中文) and `docs/usage*.md` document the `start.sh` quick-start flow.
+
 ## [0.1.0-rc.7] - 2026-08-14
 
 ### Added
@@ -30,5 +41,6 @@ All notable changes to this project are documented in this file. The format foll
 - Bilingual README (English / 简体中文) with Model Experience and Known Limitations sections.
 - Documentation: installation, configuration reference, usage, architecture, development, and FAQ.
 
-[0.1.0-rc.7]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/10a573c...HEAD
+[0.1.0-rc.8]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/3d9819e...HEAD
+[0.1.0-rc.7]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/10a573c...3d9819e
 [0.1.0-rc.6]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/1d07174...6de8682
