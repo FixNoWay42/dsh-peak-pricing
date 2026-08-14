@@ -4,7 +4,7 @@ This guide covers `@deepseek-ai/dsh-peak-pricing`, the Cordis function plugin th
 
 ## Environment Setup
 
-Node.js `^22.19 || >=24` and pnpm are required; install and manage dependencies with pnpm, not npm. `pnpm-workspace.yaml` excludes the freshly published `@deepseek-ai/*@0.1.0-rc.6` packages from pnpm's minimum-release-age guard so the lockfile resolves them right after a release.
+Node.js `^22.19 || >=24` and pnpm are required; install and manage dependencies with pnpm, not npm. `pnpm-workspace.yaml` excludes the freshly published `@deepseek-ai/*@0.1.0-rc.8` packages from pnpm's minimum-release-age guard so the lockfile resolves them right after a release.
 
 ```bash
 pnpm install
@@ -67,9 +67,9 @@ lib/
 ### Pre-publish checklist
 
 - `exports` maps `.` and `./invariant`, each pointing its JS at the bundled `lib/` entry and its types at `lib/types/*.d.ts`, plus `./package.json`; keep every entry in sync when adding subpaths.
-- `files` ships exactly `lib/index.js`, `lib/invariant.js`, and `lib/types/**/*.d.ts` — the tsc intermediates and maps stay out of the tarball.
+- `files` ships exactly `lib/index.js`, `lib/invariant.js`, `lib/types/**/*.d.ts`, and `start.sh` — the tsc intermediates and maps stay out of the tarball.
 - `peerDependencies` (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`) are supplied by the host deployment; `@deepseek-ai/schemastery` is the only runtime dependency.
-- The current version is `0.1.0-rc.6` with `publishConfig.access: public`.
+- The current version is `0.1.0-rc.8` with `publishConfig.access: public`.
 
 ### Publishing
 

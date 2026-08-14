@@ -92,7 +92,7 @@ describe('tariff config validation at load', () => {
     return {
       timezone: 'Asia/Shanghai',
       peak: { provider: 'deepseek', model: 'deepseek-v4-flash' },
-      tariff,
+      ...(tariff === undefined ? {} : { tariff }),
     }
   }
 

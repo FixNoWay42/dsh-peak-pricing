@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/). Pre-release versions (`0.1.0-rc.*`) track the npm published line of `@deepseek-ai/dsh-peak-pricing`.
 
+## [0.1.0-rc.9] - 2026-08-14
+
+### Changed
+
+- `start.sh` now runs from either install location: in the source checkout it validates against the local `lib/` and `--install` runs `pnpm install` + `pnpm run build`; in an npm/pnpm install it validates against `node_modules/@deepseek-ai/dsh-peak-pricing/lib/` and skips the build (the shipped package is already built).
+- `tests/tariff.spec.ts` builds the optional `tariff` config with a conditional spread, matching the harness monorepo's `exactOptionalPropertyTypes` compile.
+- `docs/installation*.md` and `docs/development*.md` refreshed to `0.1.0-rc.8`, 29 tests across four specs, the `tariff` config example, and the two-install-location `start.sh` flow.
+
 ## [0.1.0-rc.8] - 2026-08-14
 
 ### Added
@@ -41,6 +49,7 @@ All notable changes to this project are documented in this file. The format foll
 - Bilingual README (English / 简体中文) with Model Experience and Known Limitations sections.
 - Documentation: installation, configuration reference, usage, architecture, development, and FAQ.
 
-[0.1.0-rc.8]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/3d9819e...HEAD
+[0.1.0-rc.9]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/39302e6...HEAD
+[0.1.0-rc.8]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/3d9819e...39302e6
 [0.1.0-rc.7]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/10a573c...3d9819e
 [0.1.0-rc.6]: http://liuyuesong.asia:8360/open/dsh-peak-pricing/compare/1d07174...6de8682

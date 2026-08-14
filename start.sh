@@ -5,9 +5,11 @@
 # Interactively (default) or from flags/env (non-interactive, CI-friendly), it
 # collects the plugin configuration — timezone, peak windows, effective date,
 # peak preset, and an optional tariff override — renders a validated cordis.yml
-# entry, verifies the config against the plugin's own schema, installs and
-# builds the package when run inside this repository, and can append the entry
-# to a deepseek-harness deployment's cordis.yml.
+# entry, verifies the config against the plugin's own schema, and can append
+# the entry to a deepseek-harness deployment's cordis.yml. It runs from either
+# the source checkout (where --install runs pnpm install + build, and the local
+# lib/ is used for validation) or from an npm/pnpm install (the already-built
+# lib under node_modules is used, and install/build is skipped).
 #
 # Usage:
 #   ./start.sh                          # interactive wizard, writes ./cordis.yml
@@ -27,8 +29,8 @@
 #   --tariff <spec>         optional per-model overrides; "model:peakHit,peakIn,peakOut,offHit,offIn,offOut[;...]"
 #   --out <file>            where to write the cordis.yml (default: ./cordis.yml)
 #   --harness <dir>         deepseek-harness deployment dir; append the entry to its cordis.yml
-#   --install               run pnpm install + pnpm build after writing (repo runs)
-#   --no-install            skip install/build even inside this repository
+#   --install               run pnpm install + pnpm build (source checkout only)
+#   --no-install            skip install/build even in the source checkout
 #   --force                 overwrite --out without asking
 #   --quiet                 print only the final summary
 #   -h, --help              show this help and exit
@@ -192,16 +194,37 @@ if (tariff) {
 process.stdout.write(JSON.stringify(out));
 ')"
 
+# --- locate the built plugin lib (source checkout vs npm install) --------------
+# Prefer this repository's own lib/ (source checkout); fall back to the package
+# installed under node_modules (npm/pnpm install), which is already built.
+find_lib() {
+  if [ -f "$PWD/lib/index.js" ]; then printf '%s' "$PWD/lib/index.js"
+  elif [ -f "$PWD/node_modules/@deepseek-ai/dsh-peak-pricing/lib/index.js" ]; then
+    printf '%s' "$PWD/node_modules/@deepseek-ai/dsh-peak-pricing/lib/index.js"
+  else printf ''; fi
+}
+
+# Whether this directory is the plugin's own source checkout (has src/ + the
+# package.json named after it), where `pnpm install` + `pnpm run build` apply.
+is_source_repo() {
+  [ -f "$PWD/package.json" ] && [ -d "$PWD/src" ] && \
+    grep -q '"name": "@deepseek-ai/dsh-peak-pricing"' "$PWD/package.json" 2>/dev/null
+}
+
 # --- validate against the plugin's own schema --------------------------------
 validate_config() {
   need node
-  node --input-type=module -e '
-import { apply, Config } from "./lib/index.js";
-import { Context } from "@deepseek-ai/cordis";
+  LIB_PATH="$(find_lib)"
+  [ -n "$LIB_PATH" ] || die "cannot locate lib/index.js (build the source checkout, or npm install the package)"
+  LIB_PATH="$LIB_PATH" node --input-type=module -e '
+import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
+const lib = await import(pathToFileURL(process.env.LIB_PATH).href);
+const { apply, Config } = lib;
 const config = JSON.parse(readFileSync(process.argv[1], "utf8"));
 try {
   const parsed = Config(config);
+  const { Context } = await import("@deepseek-ai/cordis");
   const ctx = new Context();
   try { apply(ctx, parsed); } finally { await ctx.fiber.dispose(); }
 } catch (err) {
@@ -217,11 +240,11 @@ trap 'rm -f "$CONFIG_JSON_FILE"' EXIT
 printf '%s' "$CONFIG_JSON" > "$CONFIG_JSON_FILE"
 
 if have_node; then
-  if [ -f "$PWD/lib/index.js" ] || [ -f "lib/index.js" ]; then
+  if [ -n "$(find_lib)" ]; then
     log "validating config against the plugin schema…"
-    (cd "$PWD" && validate_config) || die "config validation failed"
+    validate_config || die "config validation failed"
   else
-    log "lib/ not built; skipping in-place schema validation (run --install or pnpm run build)"
+    log "lib/index.js not found; skipping in-place schema validation (run --install, or npm install the package)"
   fi
 fi
 
@@ -271,11 +294,15 @@ if [ -n "$INSTALL_VAL" ]; then
   case "$INSTALL_VAL" in 1|y|Y|yes|YES) do_install=1 ;; *) do_install=0 ;; esac
 fi
 if [ "$do_install" -eq 1 ]; then
-  need pnpm
-  log "installing dependencies…"
-  pnpm install
-  log "building…"
-  pnpm run build
+  if is_source_repo; then
+    need pnpm
+    log "installing dependencies…"
+    pnpm install
+    log "building…"
+    pnpm run build
+  else
+    log "not a source checkout (npm-installed package is already built); skipping install/build"
+  fi
 fi
 
 # --- summary -------------------------------------------------------------------

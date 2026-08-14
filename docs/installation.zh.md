@@ -1,6 +1,6 @@
 # 安装 @deepseek-ai/dsh-peak-pricing
 
-`@deepseek-ai/dsh-peak-pricing`（v0.1.0-rc.6）是一个 Cordis 函数插件：在配置的高峰计价时段内，将 agent 的模型请求路由到预设的廉价模型，避免价格高峰命中昂贵的会话选型。
+`@deepseek-ai/dsh-peak-pricing`（v0.1.0-rc.8）是一个 Cordis 函数插件：在配置的高峰计价时段内，将 agent 的模型请求路由到预设的廉价模型，避免价格高峰命中昂贵的会话选型。插件同时内置 DeepSeek 官方价目表与纯费用估算函数（见 README）。
 
 ## 前置要求（Prerequisites）
 
@@ -10,9 +10,11 @@
 
 Peer dependencies（对等依赖）由宿主提供，本包不会安装它们：`@deepseek-ai/cordis`（^4.0.1）、`@deepseek-ai/dsh-agent`（^0.1.0-rc.6）、`@deepseek-ai/dsh-invariants`（^0.1.0-rc.6）、`@deepseek-ai/dsh-llm`（^0.1.0-rc.6）。
 
+插件可从两种位置之一安装——作为 deepseek-harness monorepo 的 workspace 成员，或作为独立 npm 包。两者产出相同的挂载条目，区别仅在于包的解析方式。
+
 ## 方式 A：在 deepseek-harness monorepo 中挂载
 
-`@deepseek-ai/dsh-peak-pricing` 是 deepseek-harness monorepo 的 workspace 成员（packages/llm/peak-pricing），因此无需单独 `npm install` —— pnpm 会从 workspace 直接解析该包。
+`@deepseek-ai/dsh-peak-pricing` 是 deepseek-harness monorepo 的 workspace 成员（`packages/llm/peak-pricing`），因此无需单独 `npm install` —— pnpm 会从 workspace 直接解析该包。源码以 `workspace:^` 声明依赖，发布管线在 `pnpm pack` 时把它改写为 semver 范围，因此同一份 manifest 同时服务此处源码安装与下面的 npm 安装。
 
 在 `cordis.yml` 中添加一条目即可：
 
@@ -27,12 +29,12 @@ Peer dependencies（对等依赖）由宿主提供，本包不会安装它们：
   config:
     peak:
       provider: deepseek
-      model: deepseek-chat
+      model: deepseek-v4-flash
 ```
 
-`peak.provider` 与 `peak.model` 必填并在加载时校验；未知时区、非法或空时段、无法解析的 `effectiveFrom`、缺失预设字段都会在插件挂载时立刻报错。
+`peak.provider` 与 `peak.model` 必填并在加载时校验；未知时区、非法或空时段、无法解析的 `effectiveFrom`、缺失预设字段、或含负数/非有限价格的价目条目都会在插件挂载时立刻报错。
 
-## 方式 B：作为独立包安装
+## 方式 B：作为独立 npm 包安装
 
 在任何宿主已提供 peer dependencies 的 Cordis 应用中：
 
@@ -56,7 +58,12 @@ peer dependencies —— `@deepseek-ai/dsh-agent`、`@deepseek-ai/dsh-invariants
     effectiveFrom: '2026-08-17T00:00:00+08:00'
     peak:
       provider: deepseek
-      model: deepseek-chat
+      model: deepseek-v4-flash
+    # 可选：按模型覆盖价格，合并到内置价目表之上。
+    tariff:
+      my-custom-model:
+        peak: { inputCacheHit: 0.5, input: 4, output: 12 }
+        offPeak: { inputCacheHit: 0.25, input: 2, output: 6 }
 ```
 
 ## 方式 C：从源码安装
@@ -70,6 +77,20 @@ pnpm run build
 
 `pnpm run build` 执行 `tsc -p tsconfig.json && tsdown`；产物输出到 `lib/` —— `lib/index.js`、`lib/invariant.js` 以及 `lib/types/` 下的类型声明。按方式 B 的写法在你的 `cordis.yml` 中挂载构建产物。
 
+## 用 `start.sh` 一键设置
+
+包内自带 `start.sh` 脚本，可交互式或通过参数渲染出经过校验的 `cordis.yml` 条目，两种安装位置下都能运行。源码检出处它用本地 `lib/` 校验，`--install` 会执行 `pnpm install` + `pnpm run build`；npm/pnpm 安装处它用 `node_modules/@deepseek-ai/dsh-peak-pricing/lib/` 校验并跳过构建（发布包已构建完成）。不带参数运行即进入交互向导，带参数则为非交互运行：
+
+```sh
+./start.sh --timezone Asia/Shanghai \
+           --windows 09:00-12:00,14:00-18:00 \
+           --provider deepseek --model deepseek-v4-flash \
+           --tariff 'my-model:0.5,4,12,0.25,2,6' \
+           --out cordis.yml
+```
+
+运行 `./start.sh --help` 查看完整参数。
+
 ## 验证安装
 
 在仓库中运行测试套件：
@@ -78,7 +99,7 @@ pnpm run build
 pnpm run test
 ```
 
-17 个测试全部通过，分布在三个 spec（`peak-pricing`、`invariant`、`loader-composition`）中，其中包含一个真实的 Loader 组合测试：它通过真正的 Cordis Loader 连同宿主插件（dsh-llm、dsh-session、dsh-system-prompt、dsh-tools、dsh-agent、dsh-agent-loop）一起启动本插件，并逐个请求断言实际服务的模型。
+29 个测试全部通过，分布在四个 spec（`peak-pricing`、`tariff`、`invariant`、`loader-composition`）中，其中包含一个真实的 Loader 组合测试：它通过真正的 Cordis Loader 连同宿主插件（dsh-llm、dsh-session、dsh-system-prompt、dsh-tools、dsh-agent、dsh-agent-loop）一起启动本插件，并逐个请求断言实际服务的模型。
 
 然后启动宿主并观察日志：插件挂载后，高峰时段内的 agent 模型请求携带预设的 `provider`/`model` 组合而非会话选中的模型；时段外的请求保持会话选型。
 

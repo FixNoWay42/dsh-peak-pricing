@@ -4,7 +4,7 @@
 
 ## 环境准备（Environment Setup）
 
-需要 Node.js `^22.19 || >=24` 与 pnpm；依赖的安装与管理使用 pnpm 而非 npm。`pnpm-workspace.yaml` 将刚发布的 `@deepseek-ai/*@0.1.0-rc.6` 各包排除在 pnpm 的最低发布年龄（minimum release age）限制之外，保证新发布后锁文件能立即解析到它们。
+需要 Node.js `^22.19 || >=24` 与 pnpm；依赖的安装与管理使用 pnpm 而非 npm。`pnpm-workspace.yaml` 将刚发布的 `@deepseek-ai/*@0.1.0-rc.8` 各包排除在 pnpm 的最低发布年龄（minimum release age）限制之外，保证新发布后锁文件能立即解析到它们。
 
 ```bash
 pnpm install
@@ -67,9 +67,9 @@ lib/
 ### 发布前检查清单（Pre-publish checklist）
 
 - `exports` 映射 `.` 与 `./invariant`，两者的 JS 指向打包后的 `lib/` 入口、类型指向 `lib/types/*.d.ts`，另有 `./package.json`；新增子路径时保持各处同步。
-- `files` 只发布 `lib/index.js`、`lib/invariant.js` 与 `lib/types/**/*.d.ts` —— tsc 中间产物与 source map 不进 tarball。
+- `files` 只发布 `lib/index.js`、`lib/invariant.js`、`lib/types/**/*.d.ts` 与 `start.sh` —— tsc 中间产物与 source map 不进 tarball。
 - `peerDependencies`（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-agent`、`@deepseek-ai/dsh-invariants`、`@deepseek-ai/dsh-llm`）由宿主部署提供；`@deepseek-ai/schemastery` 是唯一的运行时依赖。
-- 当前版本为 `0.1.0-rc.6`，`publishConfig.access: public`。
+- 当前版本为 `0.1.0-rc.8`，`publishConfig.access: public`。
 
 ### 发布
 
