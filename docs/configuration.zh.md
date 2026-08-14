@@ -16,6 +16,7 @@
 | `peakWindows` | `PeakWindow[]` | 否 | `[{ start: '09:00', end: '12:00' }, { start: '14:00', end: '18:00' }]` | 每日高峰时段，每个时段起点包含、终点不包含。 |
 | `effectiveFrom` | `string` | 否 | 无（开关立即生效） | RFC 3339 即时点；在此之前开关永不触发。 |
 | `peak` | `PeakPreset` | 是 | —（无默认值） | 高峰时段使用的预设模型选型（必填对象）。 |
+| `tariff` | `Record<string, TariffEntry>` | 否 | `DEEPSEEK_TARIFF`（内置） | 按模型的价目表覆盖，合并到内置 DeepSeek 价目表之上；仅用于估算与日志。 |
 
 `PeakWindow`（`{ start, end }`，两项均必填）：
 
@@ -50,6 +51,22 @@ interface PeakPreset {
   /** Adapter-owned reasoning effort, or provider/default behavior when absent. */
   reasoningEffort?: string
 }
+
+interface TariffPrice {
+  /** Price per million input tokens served from provider cache. */
+  inputCacheHit: number
+  /** Price per million input tokens served from cache miss. */
+  input: number
+  /** Price per million output tokens. */
+  output: number
+}
+
+interface TariffEntry {
+  /** Price during peak windows. */
+  peak: TariffPrice
+  /** Price outside peak windows. */
+  offPeak: TariffPrice
+}
 ```
 
 ## `timezone`
@@ -76,6 +93,34 @@ interface PeakPreset {
 
 必填对象，选择预设模型。`provider` 与 `model` 均必填且必须是非空字符串：任一为空即抛出 `peak-pricing: peak.provider and peak.model are required`。`provider` 指向宿主已注册的路由（例如 DeepSeek 适配器的 `deepseek`）；`model` 是该路由服务的模型 id（例如 `deepseek-chat`）。可选的 `reasoningEffort` 仅在声明时应用；继承自已解析请求的 reasoning effort 会被丢弃，与 model-selection 语义一致。
 
+## `tariff`
+
+可选的模型 id → `TariffEntry` 映射（每个条目含 `peak` 与 `offPeak` 两个 `TariffPrice`，各自包含按百万 tokens 计价的 `inputCacheHit`、`input`、`output` 三个价格）。用户条目合并到内置 `DEEPSEEK_TARIFF` 之上（`deepseek-v4-flash` 与 `deepseek-v4-pro` 的官方 DeepSeek 价目表，空闲价格为高峰价格的一半，来源为 DeepSeek 定价页面），因此配置可以为自定义模型定价或刷新官方数字，而无需重复内置条目。
+
+价目表仅用于估算与日志——切换本身按挂钟时段判定，从不按价格判定。当高峰时段把请求路由到预设模型，且被解析模型与预设模型都有价目条目时，插件会记录高峰价格对比日志（输入、缓存命中输入、输出，单位元/百万 tokens）；导出的 `estimateCost(usage, price)` 与 `estimateSaving(usage, resolved, peak)` 按价目条目对具体 token 用量计价。
+
+每个价目条目在加载时校验：六个价格必须都是有限且非负的数字。非法条目抛出 `peak-pricing: tariff for model "..." must carry non-negative peak and off-peak prices`。`tariff` 可选；省略该键则单独使用内置价目表。
+
+带自定义模型的内置价目表示例：
+
+```yaml
+- name: '@deepseek-ai/dsh-peak-pricing'
+  config:
+    peak:
+      provider: deepseek
+      model: deepseek-v4-flash
+    tariff:
+      my-custom-model:
+        peak:
+          inputCacheHit: 0.5
+          input: 4.0
+          output: 12.0
+        offPeak:
+          inputCacheHit: 0.25
+          input: 2.0
+          output: 6.0
+```
+
 ## 时段语义
 
 每个时段是时区下的每日本地挂钟区间 `[start, end)`：起点分钟在时段内，终点分钟在时段外。判定时比较当前即时点在配置 `timezone` 下的挂钟分钟数（用 `Intl.DateTimeFormat` 计算）。端点只是普通 `HH:mm` 值，永不做 DST（夏令时）调整；无夏令时的时区（如 `Asia/Shanghai`）行为一致，其他时区的 DST 只会改变即时点落在哪个挂钟分钟上，不会移动时段边界。
@@ -90,7 +135,7 @@ interface PeakPreset {
 
 ## 校验顺序
 
-`resolveConfig` 按固定顺序校验，在第一个违规处失败，因此一次只暴露一个错误：时区探测 → 每个时段端点（格式、范围、顺序）→ 非空数组检查 → `effectiveFrom` 解析 → `peak.provider`/`peak.model` 非空检查。
+`resolveConfig` 按固定顺序校验，在第一个违规处失败，因此一次只暴露一个错误：时区探测 → 每个时段端点（格式、范围、顺序）→ 非空数组检查 → `effectiveFrom` 解析 → `peak.provider`/`peak.model` 非空检查 → 每个价目条目的价格有效性。
 
 ## YAML 示例
 
@@ -145,3 +190,4 @@ interface PeakPreset {
 | `effectiveFrom` 无法解析，如 `not-a-date` | `peak-pricing: effectiveFrom must be a parseable instant, got "not-a-date"` | 使用 RFC 3339 即时点，如 `2026-08-17T00:00:00Z`。 |
 | `peak.provider` 或 `peak.model` 为空 | `peak-pricing: peak.provider and peak.model are required` | 在 `peak` 内提供非空的 `provider` 与 `model`。 |
 | 整个 `peak` 对象缺失 | 插件 schema 在加载时拒绝（无 `peak-pricing:` 前缀消息；必填字段缺失） | 添加含非空 `provider` 与 `model` 的 `peak` 对象。 |
+| 价目条目含负数或非有限价格，如 `input: -1` | `peak-pricing: tariff for model "my-model" must carry non-negative peak and off-peak prices` | 让每个价格都是有限非负数字；`peak` 与 `offPeak` 两个价格点均必填。 |

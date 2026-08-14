@@ -22,7 +22,7 @@ pnpm install
 
 ### pnpm run test
 
-执行 `vitest run`，以非监听模式运行一次测试套件。按 `vitest.config.ts`，Vitest 收集 `tests/**/*.spec.ts`，单个测试超时时间为 60 秒。输出为各文件进度与最终汇总（文件数与测试数）；任何失败都以非零退出码结束。当前套件为 3 个 spec 文件共 17 个测试。
+执行 `vitest run`，以非监听模式运行一次测试套件。按 `vitest.config.ts`，Vitest 收集 `tests/**/*.spec.ts`，单个测试超时时间为 60 秒。输出为各文件进度与最终汇总（文件数与测试数）；任何失败都以非零退出码结束。当前套件为 4 个 spec 文件共 29 个测试。
 
 ### pnpm run build
 
@@ -30,7 +30,7 @@ pnpm install
 
 ## 测试结构（Test Structure）
 
-测试位于 `tests/`，直接导入 devDependencies 中从 npm 发布的 `@deepseek-ai/dsh-*` 包（例如 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-agent`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-invariants`，以及加载器插件 `@deepseek-ai/cordis-plugin-loader` 与 `@deepseek-ai/cordis-plugin-include`），套件可脱离仓库独立运行。三个 spec 文件覆盖三层：单元行为、真实 Loader 组合、invariant 伴生插件。
+测试位于 `tests/`，直接导入 devDependencies 中从 npm 发布的 `@deepseek-ai/dsh-*` 包（例如 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-agent`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-invariants`，以及加载器插件 `@deepseek-ai/cordis-plugin-loader` 与 `@deepseek-ai/cordis-plugin-include`），套件可脱离仓库独立运行。四个 spec 文件覆盖四层：单元行为、价目表估算与日志、真实 Loader 组合、invariant 伴生插件。
 
 ### tests/peak-pricing.spec.ts —— 单元行为（14 个测试）
 
@@ -39,6 +39,10 @@ pnpm install
 ### tests/loader-composition.spec.ts —— 真实 Loader 组合（1 个测试）
 
 该测试启动真实的 `@deepseek-ai/cordis-plugin-loader` 与 `@deepseek-ai/cordis-plugin-include`：在临时目录写入 `cordis.yml`，通过内部 v2 import map 注册工作区插件模块，再经 `cordis:include` 在全新上下文中挂载该文件。用 `vi.useFakeTimers({ toFake: ['Date'] })` 与 `vi.setSystemTime(...)` 把时钟冻结在 09:30 北京时间（默认 09:00-12:00 时段内）与之后的 13:30 北京时间（非高峰）；`RecordingAdapter` 记录每个请求实际服务的模型。断言所有条目均已加载、服务模型依次为 `peak-chat` 与 `default`、agent 的 request header 记录了被切换的模型（模型可见 ⟺ 已记录），以及派生的助手消息正确流式返回。该测试显式采用 60 秒超时，因为冷缓存下 host/client 程序拆分后的 tsx 解析可能超过默认的 5 秒预算。
+
+### tests/tariff.spec.ts —— 价目表估算与日志（12 个测试）
+
+`DEEPSEEK_TARIFF` 一组（2 个）钉住两个模型（`deepseek-v4-flash` 与 `deepseek-v4-pro`）的精确官方价格（缓存命中输入、缓存未命中输入、输出；高峰与空闲各一列），并断言每个高峰价格都恰好是空闲价格的两倍（官方半价规则）。`estimateCost` 一组（3 个）验证分列计费——缓存命中与未命中的输入 token 按各自费率、token 数线性、零缓存命中调用；`estimateSaving`（2 个）验证高峰价格下的费用差，预设更便宜时为正、更贵时为负。校验一组（3 个）断言用户价目条目合并到内置表之上，且负数或非有限价格抛出 `tariff for model "..." must carry non-negative peak and off-peak prices`。日志一组（2 个）通过 `ctx.logger.exporter()` 捕获 `peak-pricing` 的 info 消息，断言两个模型都有价目条目时输出高峰价格对比行、被解析模型无条目时不输出。
 
 ### tests/invariant.spec.ts —— invariant 伴生插件（2 个测试）
 

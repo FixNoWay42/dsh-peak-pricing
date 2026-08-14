@@ -107,6 +107,20 @@ apply(ctx, config, {
 })
 ```
 
+### 价目表估算
+
+入口还导出内置价目表与两个纯费用函数。`estimateCost(usage, price)` 按一个价格点对具体 token 用量计价，缓存命中输入、缓存未命中输入与输出 token 分别按各自的每百万费率计算；`estimateSaving(usage, resolved, peak)` 是会话解析模型价目条目与高峰预设条目在高峰价格下的费用差——即本次切换的单次调用节省：
+
+```ts
+import { DEEPSEEK_TARIFF, estimateCost, estimateSaving } from '@deepseek-ai/dsh-peak-pricing'
+
+const usage = { inputCacheHitTokens: 100_000, inputTokens: 900_000, outputTokens: 500_000 }
+const cost = estimateCost(usage, DEEPSEEK_TARIFF['deepseek-v4-flash']!.peak)
+const saving = estimateSaving(usage, DEEPSEEK_TARIFF['deepseek-v4-pro']!, DEEPSEEK_TARIFF['deepseek-v4-flash']!)
+```
+
+高峰时段内，当被解析模型与预设模型都有价目条目时，插件会按每百万 tokens 记录高峰价格对比日志（输入、缓存命中输入、输出，单位元），可按实际 token 用量推导单次调用节省；估算仅供参考，绝不影响路由。配置键 `tariff` 可在内置价目表之上合并自定义模型价格。
+
 ## 多时区 / 多套时段
 
 一次挂载只携带一套配置：该实例的所有时段共用同一个 `timezone`。要在同一进程内覆盖多个时区或几套独立的时段，需要挂载多个插件实例。所有实例共享同一个插件 `name`（`peak-pricing`），因此请在 compose 文件中为每个实例使用不同的包条目（独立的列表项），各自携带完整的配置——各自的时区、时段、预设与可选的 `effectiveFrom`。每次挂载都是独立开关，实例之间没有协调。

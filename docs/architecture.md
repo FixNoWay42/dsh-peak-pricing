@@ -96,9 +96,13 @@ The switch only ever sees requests that enter the agent loop's `agent/request` w
 
 ## Design tradeoffs
 
-### No tariff table or billing integration
+### Tariff is static estimation, never a routing input
 
-The switch keys on configured wall-clock windows only. It never reads API price lists, and `effectiveFrom` is a one-time global effective date, not a schedule. Price data is provider-owned and volatile; routing on live prices would force the plugin to fetch, cache, and refresh price state — durable mutable state that would contradict the stateless per-request design and complicate the model-visible ⟺ logged guarantee. Declarative windows are deterministic, testable, and cheap to reason about.
+The plugin ships a built-in DeepSeek tariff (`DEEPSEEK_TARIFF`) and merges optional `tariff` config entries over it, but the switch still keys on configured wall-clock windows only — prices never enter `shouldSwitch`. Tariff entries feed two informational outputs: the peak-price comparison log line emitted when a request is routed to the preset, and the pure `estimateCost`/`estimateSaving` functions for pricing a concrete token usage. Keeping prices out of the routing decision preserves the stateless per-request design: no price fetch, cache, or refresh state, and the model-visible ⟺ logged guarantee is unaffected. The built-in table is a snapshot of the official DeepSeek pricing page; deployments refresh it by overriding entries in `tariff`, since prices are provider-owned and volatile.
+
+### No billing integration
+
+The tariff is a static, configurable price table for estimation and logging only. The plugin does not fetch live prices, reconcile invoices, or meter actual spend, and `effectiveFrom` is a one-time global effective date, not a schedule. Metering real spend would require durable usage state and provider billing APIs, contradicting the stateless per-request design; the estimate functions give callers the numbers to do their own accounting.
 
 ### No off-peak preset
 
@@ -110,8 +114,9 @@ A window's `end` must be later than its `start` — enforced at load with `start
 
 ## Source and test map
 
-- `src/index.ts` — plugin entry: `apply`, `resolveConfig`, `shouldSwitch`, `applyPeakPreset`, `wallClockMinutes`, `isPeakTime`, schema and types.
+- `src/index.ts` — plugin entry: `apply`, `resolveConfig`, `shouldSwitch`, `applyPeakPreset`, `wallClockMinutes`, `isPeakTime`, tariff (`DEEPSEEK_TARIFF`, `estimateCost`, `estimateSaving`), schema and types.
 - `src/invariant.ts` — empty invariant companion (`peak-pricing-invariant`).
 - `tests/peak-pricing.spec.ts` — `isPeakTime` classification, load-time validation, peak/off-peak switching, reasoning-effort handling, `effectiveFrom` gating, ordering vs. `installModelSelection`, scope disposal.
+- `tests/tariff.spec.ts` — built-in tariff fidelity, `estimateCost`/`estimateSaving` math, tariff config validation, and the peak-price comparison log.
 - `tests/loader-composition.spec.ts` — real Loader composition; the served model equals the logged `requestHeader().config`.
 - `tests/invariant.spec.ts` — the companion mounts cleanly and names itself after the package.

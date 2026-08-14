@@ -16,6 +16,7 @@ Top-level fields:
 | `peakWindows` | `PeakWindow[]` | No | `[{ start: '09:00', end: '12:00' }, { start: '14:00', end: '18:00' }]` | Daily peak windows, each with start inclusive and end exclusive. |
 | `effectiveFrom` | `string` | No | none (switch active immediately) | RFC 3339 instant before which the switch never engages. |
 | `peak` | `PeakPreset` | Yes | — (no default) | Required preset model selection used during peak windows. |
+| `tariff` | `Record<string, TariffEntry>` | No | `DEEPSEEK_TARIFF` (built-in) | Per-model price overrides, merged over the built-in DeepSeek tariff; used for estimation and logging only. |
 
 `PeakWindow` (`{ start, end }`, both fields required):
 
@@ -50,6 +51,22 @@ interface PeakPreset {
   /** Adapter-owned reasoning effort, or provider/default behavior when absent. */
   reasoningEffort?: string
 }
+
+interface TariffPrice {
+  /** Price per million input tokens served from provider cache. */
+  inputCacheHit: number
+  /** Price per million input tokens served from cache miss. */
+  input: number
+  /** Price per million output tokens. */
+  output: number
+}
+
+interface TariffEntry {
+  /** Price during peak windows. */
+  peak: TariffPrice
+  /** Price outside peak windows. */
+  offPeak: TariffPrice
+}
 ```
 
 ## `timezone`
@@ -76,6 +93,35 @@ Optional RFC 3339 instant (for example `2026-08-17T00:00:00Z` or `2026-08-17T00:
 
 Required object that selects the preset model. `provider` and `model` are both required and must be non-empty strings: an empty `provider` or an empty `model` throws `peak-pricing: peak.provider and peak.model are required`. `provider` names a route the host has registered (for example the DeepSeek adapter's `deepseek`); `model` names a model id that route serves (for example `deepseek-chat`). The optional `reasoningEffort` is applied only when declared; an inherited reasoning effort from the resolved request is discarded, mirroring model-selection semantics.
 
+## `tariff`
+
+Optional map of model id to `TariffEntry` (a `peak` and an `offPeak` `TariffPrice`, each with `inputCacheHit`, `input`, and `output` prices in the tariff's currency per million tokens). User entries are merged over the built-in `DEEPSEEK_TARIFF` (the official DeepSeek tariff for `deepseek-v4-flash` and `deepseek-v4-pro`, off-peak at half the peak price per the DeepSeek pricing page), so a config can price custom models or refresh the official numbers without repeating the built-in ones.
+
+The tariff is used for estimation and logging only — the switch decides on wall-clock windows, never on prices. When a peak window routes a request to the preset model and both the resolved model and the preset model have tariff entries, the switch logs the peak-price comparison (input, cache-hit input, and output, CNY per million tokens); the exported `estimateCost(usage, price)` and `estimateSaving(usage, resolved, peak)` price a concrete token usage against the entries.
+
+Every tariff entry is validated at load: each of the six prices must be a finite, non-negative number. An invalid entry throws `peak-pricing: tariff for model "..." must carry non-negative peak and off-peak prices`. `tariff` is optional; omit the key to use the built-in table alone.
+
+Example with a custom model priced alongside the built-in ones:
+
+```yaml
+- name: '@deepseek-ai/dsh-peak-pricing'
+  config:
+    peak:
+      provider: deepseek
+      model: deepseek-v4-flash
+    tariff:
+      my-custom-model:
+        peak:
+          inputCacheHit: 0.5
+          input: 4.0
+          output: 12.0
+        offPeak:
+          inputCacheHit: 0.25
+          input: 2.0
+          output: 6.0
+```
+
+
 ## Window semantics
 
 Each window is a daily local wall-clock range `[start, end)`: the start minute is inside the window, the end minute is outside. Classification compares the wall-clock minutes of the current instant in the configured `timezone` (computed with `Intl.DateTimeFormat`). The endpoints are plain `HH:mm` values and are never DST-adjusted; a zone without daylight saving such as `Asia/Shanghai` behaves identically, and DST shifts in other zones only move which wall-clock minutes the instant lands on, never the window boundaries.
@@ -90,7 +136,7 @@ The listener is registered on the agent scope with `prepend`, making it the oute
 
 ## Validation order
 
-`resolveConfig` validates in a fixed order and fails on the first violation, so only one error surfaces at a time: timezone probe, then each window endpoint (format, range, order), then the non-empty array check, then `effectiveFrom` parsing, then the `peak.provider`/`peak.model` presence check.
+`resolveConfig` validates in a fixed order and fails on the first violation, so only one error surfaces at a time: timezone probe, then each window endpoint (format, range, order), then the non-empty array check, then `effectiveFrom` parsing, then the `peak.provider`/`peak.model` presence check, then every tariff entry's price validity.
 
 ## YAML examples
 
@@ -145,3 +191,4 @@ Minimal example — everything except `peak` keeps its default:
 | Unparseable `effectiveFrom`, e.g. `not-a-date` | `peak-pricing: effectiveFrom must be a parseable instant, got "not-a-date"` | Use an RFC 3339 instant such as `2026-08-17T00:00:00Z`. |
 | Empty `peak.provider` or `peak.model` | `peak-pricing: peak.provider and peak.model are required` | Provide non-empty `provider` and `model` inside `peak`. |
 | `peak` object missing entirely | Rejected by the plugin schema at load (no `peak-pricing:` message; the required field is missing) | Add a `peak` object with non-empty `provider` and `model`. |
+| Tariff entry with a negative or non-finite price, e.g. `input: -1` | `peak-pricing: tariff for model "my-model" must carry non-negative peak and off-peak prices` | Make every price a finite, non-negative number; both `peak` and `offPeak` price points are required. |

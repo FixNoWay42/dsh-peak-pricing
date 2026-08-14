@@ -36,9 +36,9 @@ for (const file of files) {
     // A continuation line: non-empty, not a heading/list/table/fence/blank,
     // previous line is prose and non-empty, and the line is indented prose.
     if (cur.trim().length === 0) continue
-    if (/^(#{1,6} |[-*] |\d+\. |\| |> |```)/.test(cur.trimStart())) continue
+    if (/^(#{1,6} |[-*] |\d+\. |\| |> |```|\[[^\]]+\]:)/.test(cur.trimStart())) continue
     if (prev.trim().length === 0) continue
-    if (/^(#{1,6} |[-*] |\d+\. |\| |> |```)/.test(prev.trimStart())) continue
+    if (/^(#{1,6} |[-*] |\d+\. |\| |> |```|\[[^\]]+\]:)/.test(prev.trimStart())) continue
     // Prose continuation detected — flag it.
     console.error(`${relative(root, file)}:${i + 1}: hard-wrapped prose paragraph; use one physical line per paragraph`)
     failures += 1

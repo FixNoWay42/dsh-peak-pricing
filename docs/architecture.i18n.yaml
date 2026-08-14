@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   node scripts/verify-translation-pairing.mjs --write docs/architecture.md
-docs/architecture.md: 5427524bbb01014b497ab4aa746bfeaaf2c90039
-docs/architecture.zh.md: c3be398ca09d2cadb92c3915bc7275e77047cccb
+docs/architecture.md: 4d03b740071874487546dd6549b8624b74a93b60
+docs/architecture.zh.md: 32bf163f45a45874692f28b4c8232c3db8e09433

@@ -96,9 +96,13 @@ sequenceDiagram
 
 ## 设计取舍
 
-### 不做价目表与计费集成
+### 价目表是静态估算，绝不作为路由输入
 
-切换只按配置的挂钟时段判定。它不读取 API 价格列表，`effectiveFrom` 是一次性全局生效时间点，不是计划表。价格数据归 provider 所有且易变；按实时价格路由会迫使插件去获取、缓存并刷新价格状态——持久可变状态与无状态逐请求设计相悖，也会复杂化"模型可见 ⟺ 已记录"的保证。声明式时段是确定性的、可测试的、易于推理的。
+插件内置 DeepSeek 价目表（`DEEPSEEK_TARIFF`）并把可选的 `tariff` 配置条目合并其上，但切换仍只按配置的挂钟时段判定——价格从不进入 `shouldSwitch`。价目条目服务两个信息性输出：请求被路由到预设时打印的高峰价格对比日志行，以及为具体 token 用量计价的纯函数 `estimateCost`/`estimateSaving`。让价格不参与路由决策，保持了无状态逐请求设计：没有价格获取、缓存或刷新状态，"模型可见 ⟺ 已记录"的保证不受影响。内置价目表是官方 DeepSeek 定价页面的快照；价格归 provider 所有且易变，部署时通过 `tariff` 覆盖条目来刷新。
+
+### 不做计费集成
+
+价目表是仅用于估算与日志的静态可配置价格表。插件不获取实时价格、不对账发票、也不计量实际消费，`effectiveFrom` 是一次性全局生效时间点，不是计划表。计量实际消费需要持久的用量状态与 provider 计费 API，与无状态逐请求设计相悖；估算函数把数字交给调用方自行记账。
 
 ### 不做 off-peak 预设
 
@@ -110,8 +114,9 @@ sequenceDiagram
 
 ## 源码与测试索引
 
-- `src/index.ts` —— 插件入口：`apply`、`resolveConfig`、`shouldSwitch`、`applyPeakPreset`、`wallClockMinutes`、`isPeakTime`、schema 与类型。
+- `src/index.ts` —— 插件入口：`apply`、`resolveConfig`、`shouldSwitch`、`applyPeakPreset`、`wallClockMinutes`、`isPeakTime`、价目表（`DEEPSEEK_TARIFF`、`estimateCost`、`estimateSaving`）、schema 与类型。
 - `src/invariant.ts` —— 空的 invariant 伴生插件（`peak-pricing-invariant`）。
 - `tests/peak-pricing.spec.ts` —— `isPeakTime` 分类、加载期校验、高峰/非高峰切换、reasoning effort 处理、`effectiveFrom` 门控、与 `installModelSelection` 的顺序、作用域释放。
+- `tests/tariff.spec.ts` —— 内置价目表保真、`estimateCost`/`estimateSaving` 计算、价目表配置校验与高峰价格对比日志。
 - `tests/loader-composition.spec.ts` —— 真实 Loader 组合；实际服务的模型等于记录的 `requestHeader().config`。
 - `tests/invariant.spec.ts` —— 伴生插件干净挂载并以包名命名自身。

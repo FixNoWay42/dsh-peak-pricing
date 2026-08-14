@@ -39,6 +39,12 @@
 
 注册顺序很关键：插件以 `prepend` 在 agent 作用域上安装 `agent/request` 监听，所以它是最外层的 waterfall 变换，时段内压过会话的模型选型。时段外 `next()` 正常解析，会话选型生效。监听器挂在 agent 作用域上，随 agent 一起释放。
 
+## 价目表与费用估算（Tariff and Cost Estimation）
+
+插件内置 DeepSeek 官方价目表（`DEEPSEEK_TARIFF`），覆盖 `deepseek-v4-flash` 与 `deepseek-v4-pro`，按百万 tokens 提供高峰与空闲价格，分缓存命中输入、缓存未命中输入与输出三列（空闲价格为高峰价格的一半，来源为 [DeepSeek 定价页面](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)）。价目表仅用于估算与日志——切换本身仍按挂钟时段判定，从不按价格判定。
+
+当高峰时段把请求路由到预设模型，且被解析模型与预设模型都有价目条目时，插件会记录高峰价格对比日志（输入、缓存命中输入、输出，单位元/百万 tokens），可按实际 token 用量推导单次调用节省。纯函数 `estimateCost(usage, price)` 与 `estimateSaving(usage, resolved, peak)` 按价目条目对具体 token 用量计价，缓存命中与未命中的输入 token 分别按各自费率计算。配置键 `tariff` 可覆盖内置价目表（按模型合并），用于为自定义模型定价或刷新官方数字；条目在加载时校验（非负、有限价格）。
+
 ## 模型体验（Model Experience）
 
 ### 高峰时段模型替换
@@ -57,7 +63,7 @@
 
 ## 已知限制与待办（Known Limitations and Deferred Work）
 
-- **无价目表与计费集成**——插件只按配置的挂钟时段切换，不读取 API 价格列表；`effectiveFrom` 是一次性全局生效日，不是计划表。
+- **无计费集成**——价目表是仅用于估算与日志的静态可配置价格表；插件不获取实时价格、不对账发票、也不计量实际消费；`effectiveFrom` 是一次性全局生效日，不是计划表。
 - **时区按挂载固定**——所有时段共用同一个 `timezone`；多时区部署需挂载多个插件实例（`name` 相同，请在 compose 文件中使用不同的包条目）。
 - **不支持跨午夜时段**——`end` 不晚于 `start` 的时段在加载时被拒绝；22:00-02:00 这类时段暂时无法表达。
 - **原始适配器绕过切换**——直接调用 `ctx.llm.stream()`、从不进入 agent 循环 `agent/request` waterfall 的消费者不受影响。

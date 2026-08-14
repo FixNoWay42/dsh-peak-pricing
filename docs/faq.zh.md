@@ -28,7 +28,15 @@
 
 ## 报错 "peak.provider and peak.model are required" 是什么意思？
 
-这是加载期错误，由 `resolveConfig()` 在 `apply()` 执行时抛出，触发条件是 `peak` 预设缺少非空的 `provider` 或 `model`；完整消息为 `peak-pricing: peak.provider and peak.model are required`。修复方法是在 `config.peak` 中同时提供这两个字段。它的同类错误同样在挂载时报出：未知时区对应 `timezone ... is not a valid IANA timezone`，时间格式非法对应 `window time must be HH:mm`，时间越界对应 `window time out of range`，时段倒置对应 `window start must precede end`，空列表对应 `at least one peak window is required`，`effectiveFrom` 无法解析对应 `effectiveFrom must be a parseable instant`。
+这是加载期错误，由 `resolveConfig()` 在 `apply()` 执行时抛出，触发条件是 `peak` 预设缺少非空的 `provider` 或 `model`；完整消息为 `peak-pricing: peak.provider and peak.model are required`。修复方法是在 `config.peak` 中同时提供这两个字段。它的同类错误同样在挂载时报出：未知时区对应 `timezone ... is not a valid IANA timezone`，时间格式非法对应 `window time must be HH:mm`，时间越界对应 `window time out of range`，时段倒置对应 `window start must precede end`，空列表对应 `at least one peak window is required`，`effectiveFrom` 无法解析对应 `effectiveFrom must be a parseable instant`，价目条目非法对应 `tariff for model "..." must carry non-negative peak and off-peak prices`。
+
+## 价目表会影响切换吗？
+
+不会。内置 `DEEPSEEK_TARIFF` 与任何 `tariff` 配置条目只服务于估算与日志——切换按挂钟时段判定，从不按价格判定。价格从不进入 `shouldSwitch`，因此错误或过期的价目表只会改变对比日志与 `estimateCost`/`estimateSaving` 的输出，绝不会改变哪些请求被路由到预设。要刷新官方数字，请在 `tariff` 配置键下覆盖相关条目，而不是修改内置常量。
+
+## 测试如何保证价目表数字正确？
+
+内置价目表由两个测试钉住：一个断言两个模型（`deepseek-v4-flash` 与 `deepseek-v4-pro`）的精确官方价格（缓存命中输入、缓存未命中输入、输出，高峰与空闲各一列）；另一个断言每个高峰价格都恰好是空闲价格的两倍（官方半价规则）。估算函数按手算总额测试，包括缓存命中与未命中的输入 token 按不同费率计费的情形。
 
 ## 测试如何验证时间而不真的等到高峰？
 

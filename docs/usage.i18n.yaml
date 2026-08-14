@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   node scripts/verify-translation-pairing.mjs --write docs/usage.md
-docs/usage.md: 5a3f9c62a4a42eac39d8d73f24be296d89993983
-docs/usage.zh.md: 8696f641dd10294fa8fdb5a2bcbb043288bbd0c3
+docs/usage.md: 2a12e4d80e7563be3e072e0c419a39e3b5e72bf3
+docs/usage.zh.md: a4c0b60e62c66ed321fbc423d7ea922b89953b41

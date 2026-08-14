@@ -39,6 +39,12 @@ The preset's `provider`/`model` are required and validated at load; an unknown t
 
 Registration order matters: the switch installs its `agent/request` listener with `prepend` on the agent scope, so it is the outermost waterfall transformation and wins over the session's model selection while a window is open. Outside the windows, `next()` resolves normally and the session's selection applies. The listener lives on the agent scope and is disposed with the agent.
 
+## Tariff and cost estimation
+
+The plugin ships the official DeepSeek tariff (`DEEPSEEK_TARIFF`) for `deepseek-v4-flash` and `deepseek-v4-pro`, with peak and off-peak prices per million tokens for cache-hit input, cache-miss input, and output (off-peak is half the peak price, from [the DeepSeek pricing page](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)). The tariff is used purely for estimation and logging — the switch itself still decides on wall-clock windows, never on prices.
+
+When a peak window routes a request to the preset model and both the resolved model and the preset model have tariff entries, the switch logs the peak-price comparison (input, cache-hit input, and output, CNY per million tokens) so the per-call saving can be derived from the actual token usage. The pure functions `estimateCost(usage, price)` and `estimateSaving(usage, resolved, peak)` price a concrete token usage against the tariff entries, counting cache-hit and cache-miss input tokens at their own rates. A user `tariff` config key merges over the built-in table, letting deployments price custom models or refresh the official numbers; entries are validated at load (non-negative, finite prices).
+
 ## Model Experience
 
 ### Peak-time model substitution
@@ -57,7 +63,7 @@ The request prefix is unchanged by the switch, so provider cache reuse under tha
 
 ## Known Limitations and Deferred Work
 
-- **No tariff table or billing integration** — the plugin switches on configured wall-clock windows only. It does not read API price lists, and `effectiveFrom` is a one-time global effective date, not a schedule.
+- **No billing integration** — the tariff is a static, configurable price table used for estimation and logging only. The plugin does not fetch live prices, reconcile invoices, or meter actual spend; `effectiveFrom` is a one-time global effective date, not a schedule.
 - **Timezone is fixed per mount** — one `timezone` applies to all windows; multi-zone deployments mount multiple plugin instances (the `name` is the same, so use distinct package entries in the compose file).
 - **No midnight-crossing windows** — a window whose `end` is not later than its `start` is rejected at load; two windows such as 22:00-02:00 stay unwritable.
 - **Raw adapters bypass the switch** — direct `ctx.llm.stream()` consumers that never enter the agent loop's `agent/request` waterfall are untouched.

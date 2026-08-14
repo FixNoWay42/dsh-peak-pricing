@@ -107,6 +107,20 @@ apply(ctx, config, {
 })
 ```
 
+### Tariff estimation
+
+The entry also exports the built-in tariff and two pure cost functions. `estimateCost(usage, price)` prices a concrete token usage against one price point, counting cache-hit input, cache-miss input, and output tokens each at their own per-million rate; `estimateSaving(usage, resolved, peak)` is the peak-price cost difference between the session-resolved model's tariff entry and the peak preset's — the per-call saving of the switch:
+
+```ts
+import { DEEPSEEK_TARIFF, estimateCost, estimateSaving } from '@deepseek-ai/dsh-peak-pricing'
+
+const usage = { inputCacheHitTokens: 100_000, inputTokens: 900_000, outputTokens: 500_000 }
+const cost = estimateCost(usage, DEEPSEEK_TARIFF['deepseek-v4-flash']!.peak)
+const saving = estimateSaving(usage, DEEPSEEK_TARIFF['deepseek-v4-pro']!, DEEPSEEK_TARIFF['deepseek-v4-flash']!)
+```
+
+Inside a peak window, when both the resolved model and the preset model have tariff entries, the switch logs the peak-price comparison per million tokens (input, cache-hit input, and output in CNY) so the per-call saving follows from the actual token usage; the estimation is informational only and never affects routing. A `tariff` config key merges custom model prices over the built-in table.
+
 ## Multiple timezones or window sets
 
 A single mount carries a single configuration set: one `timezone` applies to all windows of that instance. To cover several timezones, or several independent window sets, in the same process you mount multiple plugin instances. Every instance shares the same plugin `name` (`peak-pricing`), so give each instance a distinct package entry (a separate list item) in the compose file, each with its own complete config — its own timezone, windows, preset, and optional `effectiveFrom`. Each mount is an independent switch with no cross-instance coordination.

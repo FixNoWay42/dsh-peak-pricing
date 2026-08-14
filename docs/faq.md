@@ -28,7 +28,15 @@ Timezone is fixed per mount: one `timezone` applies to all windows of one instan
 
 ## What does the error "peak.provider and peak.model are required" mean?
 
-It is a load-time error thrown from `resolveConfig()` when `apply()` runs with a `peak` preset missing a non-empty `provider` or `model`; the full message is `peak-pricing: peak.provider and peak.model are required`. Fix it by supplying both fields in `config.peak`. Its siblings all fail the same way at mount: an unknown timezone yields `timezone ... is not a valid IANA timezone`, malformed times `window time must be HH:mm`, out-of-range times `window time out of range`, inverted windows `window start must precede end`, an empty list `at least one peak window is required`, and an unparseable `effectiveFrom` `effectiveFrom must be a parseable instant`.
+It is a load-time error thrown from `resolveConfig()` when `apply()` runs with a `peak` preset missing a non-empty `provider` or `model`; the full message is `peak-pricing: peak.provider and peak.model are required`. Fix it by supplying both fields in `config.peak`. Its siblings all fail the same way at mount: an unknown timezone yields `timezone ... is not a valid IANA timezone`, malformed times `window time must be HH:mm`, out-of-range times `window time out of range`, inverted windows `window start must precede end`, an empty list `at least one peak window is required`, an unparseable `effectiveFrom` `effectiveFrom must be a parseable instant`, and an invalid tariff entry `tariff for model "..." must carry non-negative peak and off-peak prices`.
+
+## How does the tariff affect switching?
+
+It does not. The built-in `DEEPSEEK_TARIFF` and any `tariff` config entries feed estimation and logging only — the switch decides on wall-clock windows, never on prices. Prices never enter `shouldSwitch`, so a wrong or stale tariff changes the comparison log and the `estimateCost`/`estimateSaving` outputs, but never which requests get routed to the preset. To refresh the official numbers, override the relevant entries under the `tariff` config key rather than editing the built-in constant.
+
+## How are the tests' tariff values kept correct?
+
+The built-in tariff is pinned by two tests: one asserts the exact official prices (cache-hit input, cache-miss input, and output, peak and off-peak) for both `deepseek-v4-flash` and `deepseek-v4-pro`, and one asserts that every peak price is exactly twice its off-peak price (the official half-price rule). The estimate functions are tested against hand-computed totals, including the case where cache-hit and cache-miss input tokens are billed at different rates.
 
 ## How do the tests verify time without waiting for real peak hours?
 

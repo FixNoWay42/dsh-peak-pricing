@@ -22,6 +22,24 @@ export const DEFAULT_PEAK_WINDOWS = [
   { start: '14:00', end: '18:00' },
 ] as const satisfies readonly PeakWindow[]
 
+/**
+ * Official DeepSeek API tariff in CNY per million tokens, from
+ * https://api-docs.deepseek.com/zh-cn/quick_start/pricing. Peak prices are
+ * exactly twice the off-peak prices (off-peak is half price); both the new
+ * tariff and the peak-window schedule take effect 2026-08-17 00:00 Beijing
+ * time. Model ids are the provider-owned ids served by the `deepseek` route.
+ */
+export const DEEPSEEK_TARIFF: Readonly<Record<string, TariffEntry>> = {
+  'deepseek-v4-flash': {
+    peak: { inputCacheHit: 0.10, input: 3.0, output: 9.0 },
+    offPeak: { inputCacheHit: 0.05, input: 1.5, output: 4.5 },
+  },
+  'deepseek-v4-pro': {
+    peak: { inputCacheHit: 0.30, input: 9.0, output: 27.0 },
+    offPeak: { inputCacheHit: 0.15, input: 4.5, output: 13.5 },
+  },
+}
+
 /** One daily peak-price window in the configured timezone, local wall-clock time. */
 export interface PeakWindow {
   /** Inclusive local start, HH:mm. */
@@ -40,6 +58,24 @@ export interface PeakPreset {
   reasoningEffort?: string
 }
 
+/** One price point of a model, in the tariff's currency per million tokens. */
+export interface TariffPrice {
+  /** Price per million input tokens served from provider cache. */
+  inputCacheHit: number
+  /** Price per million input tokens served from cache miss. */
+  input: number
+  /** Price per million output tokens. */
+  output: number
+}
+
+/** Peak and off-peak prices of one model. */
+export interface TariffEntry {
+  /** Price during peak windows. */
+  peak: TariffPrice
+  /** Price outside peak windows. */
+  offPeak: TariffPrice
+}
+
 /** Plugin configuration. */
 export interface Config {
   /** IANA timezone of the peak windows. Default `'Asia/Shanghai'` (Beijing time). */
@@ -50,6 +86,8 @@ export interface Config {
   effectiveFrom?: string
   /** Preset model selection used during peak windows. */
   peak: PeakPreset
+  /** Optional per-model tariff overrides, merged over {@link DEEPSEEK_TARIFF}. */
+  tariff?: Record<string, TariffEntry>
 }
 
 /** Runtime schema for {@link Config}. */
@@ -65,6 +103,18 @@ export const Config: z<Config> = z.object({
     model: z.string().required(),
     reasoningEffort: z.string(),
   }).required(),
+  tariff: z.dict(z.object({
+    peak: z.object({
+      inputCacheHit: z.number().required(),
+      input: z.number().required(),
+      output: z.number().required(),
+    }).required(),
+    offPeak: z.object({
+      inputCacheHit: z.number().required(),
+      input: z.number().required(),
+      output: z.number().required(),
+    }).required(),
+  })),
 })
 
 /** Non-serializable hooks used to make time decisions deterministic in tests. */
@@ -78,6 +128,21 @@ interface ResolvedConfig {
   windows: readonly { start: number; end: number }[]
   effectiveFromMs: number | undefined
   peak: PeakPreset
+  tariff: Readonly<Record<string, TariffEntry>>
+}
+
+/** Whether a tariff entry is a finite non-negative price point. */
+function isFinitePrice(price: unknown): price is TariffPrice {
+  if (typeof price !== 'object' || price === null) return false
+  const { inputCacheHit, input, output } = price as Partial<TariffPrice>
+  return [inputCacheHit, input, output].every(
+    value => typeof value === 'number' && Number.isFinite(value) && value >= 0,
+  )
+}
+
+/** Whether a tariff entry carries both a peak and an off-peak price point. */
+function isValidTariffEntry(entry: TariffEntry): boolean {
+  return isFinitePrice(entry.peak) && isFinitePrice(entry.offPeak)
 }
 
 /** Parse one `HH:mm` window endpoint into minutes since local midnight. */
@@ -160,7 +225,15 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!config.peak.provider || !config.peak.model) {
     throw new Error('peak-pricing: peak.provider and peak.model are required')
   }
-  return { timezone, windows, effectiveFromMs, peak: config.peak }
+  const tariff = { ...DEEPSEEK_TARIFF, ...config.tariff }
+  for (const [model, entry] of Object.entries(tariff)) {
+    if (!isValidTariffEntry(entry)) {
+      throw new Error(
+        `peak-pricing: tariff for model ${JSON.stringify(model)} must carry non-negative peak and off-peak prices`,
+      )
+    }
+  }
+  return { timezone, windows, effectiveFromMs, peak: config.peak, tariff }
 }
 
 /** Whether the switch should engage at `now` under the resolved config. */
@@ -191,6 +264,45 @@ function applyPeakPreset(config: LlmCallConfig, peak: PeakPreset): LlmCallConfig
   }
 }
 
+/** Token counts of one model call, used to estimate cost against a price point. */
+export interface TokenUsage {
+  /** Input tokens served from provider cache. */
+  inputCacheHitTokens: number
+  /** Input tokens served from cache miss. */
+  inputTokens: number
+  /** Output tokens. */
+  outputTokens: number
+}
+
+/**
+ * Estimate the cost of a token usage against one price point, in the
+ * tariff's currency. Cache-hit input tokens are billed at the cache-hit
+ * price; cache-miss input tokens at the input price; output tokens at the
+ * output price (all per million tokens).
+ * @param usage - token counts of the call.
+ * @param price - the price point to bill against.
+ * @returns the estimated cost in the tariff's currency.
+ */
+export function estimateCost(usage: TokenUsage, price: TariffPrice): number {
+  return usage.inputCacheHitTokens / 1_000_000 * price.inputCacheHit
+    + usage.inputTokens / 1_000_000 * price.input
+    + usage.outputTokens / 1_000_000 * price.output
+}
+
+/**
+ * Estimate the per-call saving of routing a token usage to a cheaper peak
+ * preset instead of the session-resolved model, both priced at their peak
+ * tariff entries (the plugin only switches inside peak windows).
+ * @param usage - token counts of the call.
+ * @param resolved - peak tariff entry of the session-resolved model.
+ * @param peak - peak tariff entry of the peak preset model.
+ * @returns the estimated saving in the tariff's currency; negative when the
+ *   preset is more expensive.
+ */
+export function estimateSaving(usage: TokenUsage, resolved: TariffEntry, peak: TariffEntry): number {
+  return estimateCost(usage, resolved.peak) - estimateCost(usage, peak.peak)
+}
+
 /**
  * Install the peak-pricing switch for future agents. During a configured peak
  * window (and after `effectiveFrom` when set), each model request is routed to
@@ -199,6 +311,12 @@ function applyPeakPreset(config: LlmCallConfig, peak: PeakPreset): LlmCallConfig
  * is the outermost waterfall transformation and wins over the session's model
  * selection while the window is open.
  *
+ * When both the resolved model and the peak preset model have tariff entries,
+ * the switch logs the peak-price comparison (input, output, and cache-hit
+ * input, per million tokens) so the per-call saving can be derived from the
+ * actual token usage. The estimate functions {@link estimateCost} and
+ * {@link estimateSaving} price a concrete token usage against the entries.
+ *
  * @param ctx - plugin context owning the `agent/created` listener.
  * @param config - validated plugin configuration.
  * @param internals - non-serializable deterministic hooks for tests.
@@ -206,11 +324,24 @@ function applyPeakPreset(config: LlmCallConfig, peak: PeakPreset): LlmCallConfig
 export function apply(ctx: Context, config: Config, internals: PeakPricingInternals = {}): void {
   const resolved = resolveConfig(config)
   const now = internals.now ?? (() => new Date())
+  const logger = ctx.logger('peak-pricing')
   ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
     agent.ctx.on('agent/request', async (_payload, next) => {
       const proposed = await next()
       if (!shouldSwitch(now(), resolved)) return proposed
-      return applyPeakPreset(proposed, resolved.peak)
+      const peakConfig = applyPeakPreset(proposed, resolved.peak)
+      const resolvedTariff = resolved.tariff[proposed.model]
+      const peakTariff = resolved.tariff[resolved.peak.model]
+      if (resolvedTariff !== undefined && peakTariff !== undefined) {
+        logger.info(
+          'peak window: routing %s/%s → %s/%s; peak prices CNY/1M input %s→%s, cache-hit %s→%s, output %s→%s',
+          proposed.provider, proposed.model, peakConfig.provider, peakConfig.model,
+          resolvedTariff.peak.input, peakTariff.peak.input,
+          resolvedTariff.peak.inputCacheHit, peakTariff.peak.inputCacheHit,
+          resolvedTariff.peak.output, peakTariff.peak.output,
+        )
+      }
+      return peakConfig
     }, { prepend: true })
   })
 }
